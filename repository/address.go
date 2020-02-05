@@ -57,6 +57,10 @@ func (r *Address) FindId(address string) (uint64, error) {
 	return adr.ID, nil
 }
 
+func (r *Address) GetAddressesCount() (int, error) {
+	return r.db.Model((*models.Address)(nil)).Count()
+}
+
 func (r *Address) Close() {
 	r.db.Close()
 }

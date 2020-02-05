@@ -26,6 +26,10 @@ func (r *Balance) SaveAll(balances []*models.Balance) error {
 	return err
 }
 
+func (r *Balance) GetBalancesCount() (int, error) {
+	return r.db.Model((*models.Balance)(nil)).Count()
+}
+
 func (r *Balance) Close() {
 	r.db.Close()
 }

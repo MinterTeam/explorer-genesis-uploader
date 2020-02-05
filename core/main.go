@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/MinterTeam/explorer-genesis-uploader/repository"
 	"github.com/MinterTeam/minter-explorer-tools/v4/helpers"
@@ -53,6 +54,11 @@ func New() *ExplorerGenesisUploader {
 }
 
 func (egu *ExplorerGenesisUploader) Do() error {
+
+	if !egu.isEmptyDB() {
+		return errors.New("DB is not empty")
+	}
+
 	start := time.Now()
 	egu.logger.Info("Getting genesis data...")
 
@@ -413,4 +419,24 @@ func (egu *ExplorerGenesisUploader) saveStakes(stakes []*models.Stake) error {
 		}
 	}
 	return nil
+}
+
+func (egu *ExplorerGenesisUploader) isEmptyDB() bool {
+	addressesCount, err := egu.addressRepository.GetAddressesCount()
+	if err != nil {
+		panic(err)
+	}
+	balancesCount, err := egu.balanceRepository.GetBalancesCount()
+	if err != nil {
+		panic(err)
+	}
+	coinsCount, err := egu.coinRepository.GetCoinsCount()
+	if err != nil {
+		panic(err)
+	}
+	validatorCount, err := egu.validatorRepository.GetValidatorsCount()
+	if err != nil {
+		panic(err)
+	}
+	return addressesCount == 0 && balancesCount == 0 && coinsCount == 0 && validatorCount == 0
 }

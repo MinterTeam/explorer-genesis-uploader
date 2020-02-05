@@ -55,6 +55,10 @@ func (r *Validator) SaveAllStakes(stakes []*models.Stake) error {
 	return err
 }
 
+func (r *Validator) GetValidatorsCount() (int, error) {
+	return r.db.Model((*models.Validator)(nil)).Count()
+}
+
 func (r *Validator) Close() {
 	r.db.Close()
 }
