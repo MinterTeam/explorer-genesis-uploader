@@ -18,7 +18,6 @@ import (
 type ExplorerGenesisUploader struct {
 	addressRepository   *repository.Address
 	balanceRepository   *repository.Balance
-	blockRepository     *repository.Block
 	coinRepository      *repository.Coin
 	validatorRepository *repository.Validator
 	logger              *logrus.Entry
@@ -40,7 +39,6 @@ func New() *ExplorerGenesisUploader {
 
 	// Repositories
 	addressRepository := repository.NewAddressRepository()
-	blockRepository := repository.NewBlockRepository()
 	coinRepository := repository.NewCoinRepository()
 	validatorRepository := repository.NewValidatorRepository()
 	balanceRepository := repository.NewBalanceRepository()
@@ -48,7 +46,6 @@ func New() *ExplorerGenesisUploader {
 	return &ExplorerGenesisUploader{
 		addressRepository:   addressRepository,
 		balanceRepository:   balanceRepository,
-		blockRepository:     blockRepository,
 		coinRepository:      coinRepository,
 		validatorRepository: validatorRepository,
 		logger:              contextLogger,
@@ -56,7 +53,7 @@ func New() *ExplorerGenesisUploader {
 }
 
 func (egu *ExplorerGenesisUploader) Do() error {
-
+	start := time.Now()
 	egu.logger.Info("Getting genesis data...")
 
 	// Create a Resty Client
@@ -110,8 +107,14 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	err = egu.saveStakes(stakes)
 	helpers.HandleError(err)
 	egu.logger.Info("Stakes has been uploaded")
-
 	egu.logger.Info("Upload complete")
+
+	egu.addressRepository.Close()
+	egu.balanceRepository.Close()
+	egu.coinRepository.Close()
+	egu.validatorRepository.Close()
+	elapsed := time.Since(start)
+	egu.logger.Info("Processing time: ", elapsed)
 	return err
 }
 
@@ -191,7 +194,7 @@ func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string, wg *sync.W
 	AddrChunkSize := os.Getenv("APP_ADDRESS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(AddrChunkSize, 10, 64)
 	helpers.HandleError(err)
-
+	egu.logger.Info("Saving addresses to DB...")
 	if len(addresses) > 0 {
 		wgAddresses := new(sync.WaitGroup)
 		chunksCount := int(math.Ceil(float64(len(addresses)) / float64(chunkSize)))
@@ -211,17 +214,17 @@ func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string, wg *sync.W
 		wgAddresses.Wait()
 	}
 	wg.Done()
+	egu.addressRepository.Close()
 	egu.logger.Info("Addresses has been uploaded")
 }
 
 func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.WaitGroup) {
+	egu.logger.Info("Saving coins to DB...")
 	coinsChunkSize := os.Getenv("APP_COINS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(coinsChunkSize, 10, 64)
 	helpers.HandleError(err)
-
 	list := []*models.Coin{
 		{
-			ID:             1,
 			Crr:            100,
 			MaxSupply:      "",
 			Volume:         "",
@@ -247,13 +250,12 @@ func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.Wai
 		}()
 	}
 	wgCoins.Wait()
-
 	wg.Done()
 	egu.logger.Info("Coins has been uploaded")
 }
 
 func (egu *ExplorerGenesisUploader) saveCandidates(validators []*models.Validator) error {
-
+	egu.logger.Info("Saving validators to DB...")
 	validatorsChunkSize := os.Getenv("APP_VALIDATORS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(validatorsChunkSize, 10, 64)
 	helpers.HandleError(err)
@@ -278,33 +280,61 @@ func (egu *ExplorerGenesisUploader) saveCandidates(validators []*models.Validato
 	}
 	return nil
 }
-func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*models.Balance, error) {
-	var balances []*models.Balance
-	for _, account := range genesis.AppState.Accounts {
-		addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(account.Address))
-		if err != nil {
-			egu.logger.Error(err)
-		}
-		for _, bls := range account.Balance {
-			coinId, err := egu.coinRepository.FindIdBySymbol(bls.Coin)
-			if err != nil {
-				egu.logger.Error(err)
-			}
-			balances = append(balances, &models.Balance{
-				CoinID:    coinId,
-				AddressID: addressId,
-				Value:     bls.Value,
-			})
-		}
-	}
-	return balances, nil
-}
-func (egu *ExplorerGenesisUploader) saveBalances(balances []*models.Balance) error {
 
+func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*models.Balance, error) {
+	chunkSize := 1000
+	var results []*models.Balance
+	ch := make(chan []*models.Balance)
+
+	if len(genesis.AppState.Accounts) > 0 {
+		go func() {
+			for v := range ch {
+				results = append(results, v...)
+			}
+		}()
+		wgBalances := new(sync.WaitGroup)
+		chunksCount := int(math.Ceil(float64(len(genesis.AppState.Accounts)) / float64(chunkSize)))
+		for i := 0; i < chunksCount; i++ {
+			start := chunkSize * i
+			end := start + chunkSize
+			if end > len(genesis.AppState.Accounts) {
+				end = len(genesis.AppState.Accounts)
+			}
+			wgBalances.Add(1)
+			go func() {
+				var balances []*models.Balance
+				for _, account := range genesis.AppState.Accounts[start:end] {
+					addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(account.Address))
+					if err != nil {
+						egu.logger.Error(err)
+					}
+					for _, bls := range account.Balance {
+						coinId, err := egu.coinRepository.FindIdBySymbol(bls.Coin)
+						if err != nil {
+							egu.logger.Error(err)
+						}
+						balances = append(balances, &models.Balance{
+							CoinID:    coinId,
+							AddressID: addressId,
+							Value:     bls.Value,
+						})
+					}
+				}
+				ch <- balances
+				wgBalances.Done()
+			}()
+		}
+		wgBalances.Wait()
+	}
+	close(ch)
+	return results, nil
+}
+
+func (egu *ExplorerGenesisUploader) saveBalances(balances []*models.Balance) error {
+	egu.logger.Info("Saving balances to DB...")
 	balancesChunkSize := os.Getenv("APP_BALANCES_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(balancesChunkSize, 10, 64)
 	helpers.HandleError(err)
-
 	if len(balances) > 0 {
 		wgBalances := new(sync.WaitGroup)
 		chunksCount := int(math.Ceil(float64(len(balances)) / float64(chunkSize)))
@@ -357,7 +387,7 @@ func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*models.S
 }
 
 func (egu *ExplorerGenesisUploader) saveStakes(stakes []*models.Stake) error {
-
+	egu.logger.Info("Saving stakes to DB...")
 	stakesChunkSize := os.Getenv("APP_STAKE_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(stakesChunkSize, 10, 64)
 	helpers.HandleError(err)
