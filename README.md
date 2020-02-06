@@ -29,4 +29,4 @@ Minter Explorer Genesis Uploader is a service which provides to upload primary n
 
 - copy `.env.prod` to `.env` and fill with own values
 
-- run `./builds/explorer-genesis-uploader`
+- run `./builds/explorer-genesis-uploader` or `docker-compose up`

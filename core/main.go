@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/MinterTeam/explorer-genesis-uploader/repository"
 	"github.com/MinterTeam/minter-explorer-tools/v4/helpers"
@@ -56,7 +55,8 @@ func New() *ExplorerGenesisUploader {
 func (egu *ExplorerGenesisUploader) Do() error {
 
 	if !egu.isEmptyDB() {
-		return errors.New("DB is not empty")
+		egu.logger.Info("DB is not empty")
+		os.Exit(0)
 	}
 
 	start := time.Now()
