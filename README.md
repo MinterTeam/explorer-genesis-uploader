@@ -13,40 +13,20 @@ The official repository of Minter Explorer Genesis Uploader service.
 
 Minter Explorer Genesis Uploader is a service which provides to upload primary network state data to Minter Explorer database after network reset or first start.
 
-## RUN
+## Requirement
 
-- make build
+- PostgresSQL
 
-- ./builds/explorer-genesis-uploader -config=/etc/minter/config.json 
+## Build
 
-### Config file
+- use database migration from `database` directory
 
-Support JSON and YAML formats 
+- run `go mod tidy`
 
-Example:
+- run `go build -o ./builds/explorer_genesis_uploader ./cmd/explorer_genesis_uploader.go`
 
-```
-{
-  "name": "Minter Explorer Genesis Uploader",
-  "app": {
-    "debug": true,
-    "baseCoin": "MNT",
-    "txChunkSize": 200,
-    "addrChunkSize": 30,
-    "eventsChunkSize": 200
-  },
-  "database": {
-    "host": "localhost",
-    "name": "explorer",
-    "user": "minter",
-    "password": "password",
-    "minIdleConns": 10,
-    "poolSize": 20
-  },
-  "minterApi": {
-    "isSecure": false,
-    "link": "localhost",
-    "port": 8841
-  }
-}
-```
+## Run
+
+- copy `.env.prod` to `.env` and fill with own values
+
+- run `./builds/explorer-genesis-uploader` or `docker-compose up`
