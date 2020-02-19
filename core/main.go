@@ -194,7 +194,7 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*model
 }
 
 func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string, wg *sync.WaitGroup) {
-	AddrChunkSize := os.Getenv("APP_ADDRESS_CHUNK_SIZE")
+	AddrChunkSize := os.Getenv("EGU_ADDRESS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(AddrChunkSize, 10, 64)
 	helpers.HandleError(err)
 	egu.logger.Info("Saving addresses to DB...")
@@ -223,7 +223,7 @@ func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string, wg *sync.W
 
 func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.WaitGroup) {
 	egu.logger.Info("Saving coins to DB...")
-	coinsChunkSize := os.Getenv("APP_COINS_CHUNK_SIZE")
+	coinsChunkSize := os.Getenv("EGU_COINS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(coinsChunkSize, 10, 64)
 	helpers.HandleError(err)
 	list := []*models.Coin{
@@ -232,8 +232,8 @@ func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.Wai
 			MaxSupply:      "",
 			Volume:         "",
 			ReserveBalance: "",
-			Name:           os.Getenv("APP_BASE_COIN"),
-			Symbol:         os.Getenv("APP_BASE_COIN"),
+			Name:           os.Getenv("MINTER_BASE_COIN"),
+			Symbol:         os.Getenv("MINTER_BASE_COIN"),
 		},
 	}
 	list = append(list, coins...)
@@ -259,7 +259,7 @@ func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.Wai
 
 func (egu *ExplorerGenesisUploader) saveCandidates(validators []*models.Validator) error {
 	egu.logger.Info("Saving validators to DB...")
-	validatorsChunkSize := os.Getenv("APP_VALIDATORS_CHUNK_SIZE")
+	validatorsChunkSize := os.Getenv("EGU_VALIDATORS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(validatorsChunkSize, 10, 64)
 	helpers.HandleError(err)
 
@@ -335,7 +335,7 @@ func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*models
 
 func (egu *ExplorerGenesisUploader) saveBalances(balances []*models.Balance) error {
 	egu.logger.Info("Saving balances to DB...")
-	balancesChunkSize := os.Getenv("APP_BALANCES_CHUNK_SIZE")
+	balancesChunkSize := os.Getenv("EGU_BALANCES_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(balancesChunkSize, 10, 64)
 	helpers.HandleError(err)
 	if len(balances) > 0 {
@@ -391,7 +391,7 @@ func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*models.S
 
 func (egu *ExplorerGenesisUploader) saveStakes(stakes []*models.Stake) error {
 	egu.logger.Info("Saving stakes to DB...")
-	stakesChunkSize := os.Getenv("APP_STAKE_CHUNK_SIZE")
+	stakesChunkSize := os.Getenv("EGU_STAKE_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(stakesChunkSize, 10, 64)
 	helpers.HandleError(err)
 
