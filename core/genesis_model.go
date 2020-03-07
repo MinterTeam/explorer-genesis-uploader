@@ -73,7 +73,8 @@ type Coin struct {
 	Symbol         string `json:"symbol"`
 	Volume         string `json:"volume"`
 	Crr            string `json:"crr"`
-	ReserveBalance string `json:"reserve_balance"`
+	ReserveBalance string `json:"reserve"`
+	MaxSupply      string `json:"max_supply"`
 }
 
 type Account struct {

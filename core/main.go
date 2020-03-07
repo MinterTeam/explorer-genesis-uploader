@@ -126,9 +126,6 @@ func (egu *ExplorerGenesisUploader) Do() error {
 
 func (egu *ExplorerGenesisUploader) extractAddresses(genesis *Genesis) ([]string, error) {
 	addressesMap := make(map[string]struct{})
-	for _, val := range genesis.AppState.Validators {
-		addressesMap[helpers.RemovePrefix(val.RewardAddress)] = struct{}{}
-	}
 	for _, candidate := range genesis.AppState.Candidates {
 		addressesMap[helpers.RemovePrefix(candidate.RewardAddress)] = struct{}{}
 		addressesMap[helpers.RemovePrefix(candidate.OwnerAddress)] = struct{}{}
@@ -161,6 +158,7 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*models.Co
 			Symbol:         c.Symbol,
 			Crr:            crr,
 			Volume:         c.Volume,
+			MaxSupply:      c.MaxSupply,
 			ReserveBalance: c.ReserveBalance,
 			UpdatedAt:      time.Now(),
 		}
