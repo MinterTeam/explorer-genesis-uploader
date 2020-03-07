@@ -56,7 +56,7 @@ func (r *Coin) FindIdBySymbol(symbol string) (uint64, error) {
 }
 
 func (r *Coin) GetCoinsCount() (int, error) {
-	return r.db.Model((*models.Coin)(nil)).Where("symbol != ?", os.Getenv("APP_BASE_COIN")).Count()
+	return r.db.Model((*models.Coin)(nil)).Where("symbol != ?", os.Getenv("MINTER_BASE_COIN")).Count()
 }
 
 func (r *Coin) Close() {

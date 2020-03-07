@@ -158,6 +158,7 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*models.Co
 			Symbol:         c.Symbol,
 			Crr:            crr,
 			Volume:         c.Volume,
+			MaxSupply:      c.MaxSupply,
 			ReserveBalance: c.ReserveBalance,
 			UpdatedAt:      time.Now(),
 		}
