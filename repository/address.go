@@ -1,10 +1,8 @@
 package repository
 
 import (
-	"fmt"
-	"github.com/MinterTeam/minter-explorer-tools/v4/models"
-	"github.com/go-pg/pg/v9"
-	"os"
+	"github.com/MinterTeam/explorer-genesis-uploader/domain"
+	"github.com/go-pg/pg/v10"
 	"sync"
 )
 
@@ -14,15 +12,7 @@ type Address struct {
 	invCache *sync.Map
 }
 
-func NewAddressRepository() *Address {
-
-	db := pg.Connect(&pg.Options{
-		Addr:     fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
-		User:     os.Getenv("DB_USER"),
-		Database: os.Getenv("DB_NAME"),
-		Password: os.Getenv("DB_PASSWORD"),
-	})
-
+func NewAddressRepository(db *pg.DB) *Address {
 	return &Address{
 		cache:    new(sync.Map),
 		invCache: new(sync.Map),
@@ -31,11 +21,11 @@ func NewAddressRepository() *Address {
 }
 
 func (r *Address) SaveAll(addresses []string) error {
-	list := make([]*models.Address, len(addresses))
+	list := make([]*domain.Address, len(addresses))
 	for i, a := range addresses {
-		list[i] = &models.Address{Address: a}
+		list[i] = &domain.Address{Address: a}
 	}
-	err := r.db.Insert(&list)
+	_, err := r.db.Model(&list).Insert()
 	if err == nil {
 		r.addToCache(list)
 	}
@@ -49,7 +39,7 @@ func (r *Address) FindId(address string) (uint64, error) {
 		return id.(uint64), nil
 	}
 
-	adr := new(models.Address)
+	adr := new(domain.Address)
 	err := r.db.Model(adr).Column("id").Where("address = ?", address).Select(adr)
 	if err != nil {
 		return 0, err
@@ -58,14 +48,10 @@ func (r *Address) FindId(address string) (uint64, error) {
 }
 
 func (r *Address) GetAddressesCount() (int, error) {
-	return r.db.Model((*models.Address)(nil)).Count()
+	return r.db.Model((*domain.Address)(nil)).Count()
 }
 
-func (r *Address) Close() {
-	r.db.Close()
-}
-
-func (r *Address) addToCache(addresses []*models.Address) {
+func (r *Address) addToCache(addresses []*domain.Address) {
 	for _, a := range addresses {
 		_, exist := r.cache.Load(a)
 		if !exist {

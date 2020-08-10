@@ -51,39 +51,51 @@ type Validator struct {
 }
 
 type Candidate struct {
+	ID             string  `json:"id"`
 	RewardAddress  string  `json:"reward_address"`
 	OwnerAddress   string  `json:"owner_address"`
+	ControlAddress string  `json:"control_address"`
 	TotalBipStake  string  `json:"total_bip_stake"`
 	PubKey         string  `json:"pub_key"`
 	Commission     string  `json:"commission"`
 	Stakes         []Stake `json:"stakes"`
-	CreatedAtBlock string  `json:"created_at_block"`
-	Status         int     `json:"status"`
+	Updates        []Stake `json:"updates"`
+	Status         byte    `json:"status"`
 }
 
 type Stake struct {
 	Owner    string `json:"owner"`
-	Coin     string `json:"coin"`
+	Coin     uint   `json:"coin"`
 	Value    string `json:"value"`
 	BipValue string `json:"bip_value"`
 }
 
 type Coin struct {
-	Name           string `json:"name"`
-	Symbol         string `json:"symbol"`
-	Volume         string `json:"volume"`
-	Crr            string `json:"crr"`
-	ReserveBalance string `json:"reserve"`
-	MaxSupply      string `json:"max_supply"`
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	Symbol       string `json:"symbol"`
+	Volume       string `json:"volume"`
+	Crr          string `json:"crr"`
+	Reserve      string `json:"reserve"`
+	MaxSupply    string `json:"max_supply"`
+	Version      uint   `json:"version"`
+	OwnerAddress string `json:"owner_address"`
 }
 
 type Account struct {
-	Address string    `json:"address"`
-	Balance []Balance `json:"balance"`
-	Nonce   string    `json:"nonce"`
+	Address      string    `json:"address"`
+	Balance      []Balance `json:"balance"`
+	Nonce        string    `json:"nonce"`
+	MultisigData *Multisig `json:"multisig_data,omitempty"`
 }
 
 type Balance struct {
-	Coin  string `json:"coin"`
+	Coin  uint   `json:"coin"`
 	Value string `json:"value"`
+}
+
+type Multisig struct {
+	Weights   []string `json:"weights"`
+	Threshold string   `json:"threshold"`
+	Addresses []string `json:"addresses"`
 }

@@ -3,9 +3,10 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MinterTeam/explorer-genesis-uploader/domain"
 	"github.com/MinterTeam/explorer-genesis-uploader/repository"
 	"github.com/MinterTeam/minter-explorer-tools/v4/helpers"
-	"github.com/MinterTeam/minter-explorer-tools/v4/models"
+	"github.com/go-pg/pg/v10"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 	"math"
@@ -27,21 +28,28 @@ func New() *ExplorerGenesisUploader {
 	//Init Logger
 	logger := logrus.New()
 	logger.SetOutput(os.Stdout)
-	logger.SetReportCaller(false)
+	logger.SetReportCaller(true)
 	logger.SetFormatter(&logrus.TextFormatter{
 		DisableColors: false,
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.1",
+		"version": "1.2",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
+	db := pg.Connect(&pg.Options{
+		Addr:     fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
+		User:     os.Getenv("DB_USER"),
+		Database: os.Getenv("DB_NAME"),
+		Password: os.Getenv("DB_PASSWORD"),
+	})
+
 	// Repositories
-	addressRepository := repository.NewAddressRepository()
-	coinRepository := repository.NewCoinRepository()
-	validatorRepository := repository.NewValidatorRepository()
-	balanceRepository := repository.NewBalanceRepository()
+	addressRepository := repository.NewAddressRepository(db)
+	coinRepository := repository.NewCoinRepository(db)
+	validatorRepository := repository.NewValidatorRepository(db)
+	balanceRepository := repository.NewBalanceRepository(db)
 
 	return &ExplorerGenesisUploader{
 		addressRepository:   addressRepository,
@@ -79,16 +87,14 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	helpers.HandleError(err)
 	egu.logger.Info(fmt.Sprintf("%d addresses has been extracted", len(addresses)))
 
+	egu.saveAddresses(addresses)
+
 	egu.logger.Info("Extracting coins...")
 	coins, err := egu.extractCoins(genesis)
 	helpers.HandleError(err)
 	egu.logger.Info(fmt.Sprintf("%d coins has been extracted", len(coins)+1))
 
-	wg := new(sync.WaitGroup)
-	wg.Add(2)
-	go egu.saveAddresses(addresses, wg)
-	go egu.saveCoins(coins, wg)
-	wg.Wait()
+	egu.saveCoins(coins)
 
 	egu.logger.Info("Extracting validators...")
 	validators, err := egu.extractCandidates(genesis)
@@ -100,6 +106,9 @@ func (egu *ExplorerGenesisUploader) Do() error {
 
 	egu.logger.Info("Extracting balances...")
 	balances, err := egu.extractBalances(genesis)
+	if err != nil {
+		helpers.HandleError(err)
+	}
 	helpers.HandleError(err)
 	egu.logger.Info(fmt.Sprintf("%d balances has been extracted", len(balances)))
 	err = egu.saveBalances(balances)
@@ -115,10 +124,6 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	egu.logger.Info("Stakes has been uploaded")
 	egu.logger.Info("Upload complete")
 
-	egu.addressRepository.Close()
-	egu.balanceRepository.Close()
-	egu.coinRepository.Close()
-	egu.validatorRepository.Close()
 	elapsed := time.Since(start)
 	egu.logger.Info("Processing time: ", elapsed)
 	return err
@@ -136,6 +141,12 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *Genesis) ([]string
 	for _, account := range genesis.AppState.Accounts {
 		addressesMap[helpers.RemovePrefix(account.Address)] = struct{}{}
 	}
+	for _, coin := range genesis.AppState.Coins {
+		if coin.OwnerAddress != "" {
+			addressesMap[helpers.RemovePrefix(coin.OwnerAddress)] = struct{}{}
+		}
+	}
+
 	var addresses = make([]string, len(addressesMap))
 	i := 0
 	for adr := range addressesMap {
@@ -145,30 +156,56 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *Genesis) ([]string
 	return addresses, nil
 }
 
-func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*models.Coin, error) {
-	var coins = make([]*models.Coin, len(genesis.AppState.Coins))
-	i := 0
+func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*domain.Coin, error) {
+	var coins = make([]*domain.Coin, len(genesis.AppState.Coins)+1)
+	i := 1
+
+	coins[0] = &domain.Coin{
+		ID:        0,
+		Name:      "Base coin",
+		Symbol:    os.Getenv("MINTER_BASE_COIN"),
+		Volume:    "0",
+		Crr:       100,
+		Reserve:   "0",
+		MaxSupply: "0",
+		Version:   0,
+	}
+
 	for _, c := range genesis.AppState.Coins {
 		crr, err := strconv.ParseUint(c.Crr, 10, 64)
 		if err != nil {
 			egu.logger.Error(err)
 		}
-		coins[i] = &models.Coin{
-			Name:           c.Name,
-			Symbol:         c.Symbol,
-			Crr:            crr,
-			Volume:         c.Volume,
-			MaxSupply:      c.MaxSupply,
-			ReserveBalance: c.ReserveBalance,
-			UpdatedAt:      time.Now(),
+
+		if c.ID == 0 {
+			egu.logger.Error(err)
+		}
+
+		coins[i] = &domain.Coin{
+			ID:        c.ID,
+			Name:      c.Name,
+			Symbol:    c.Symbol,
+			Volume:    c.Volume,
+			Crr:       uint(crr),
+			Reserve:   c.Reserve,
+			MaxSupply: c.MaxSupply,
+			Version:   c.Version,
+		}
+		if c.OwnerAddress != "" {
+			addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(c.OwnerAddress))
+			if err != nil {
+				egu.logger.Error(err)
+			} else {
+				coins[i].OwnerAddressId = uint(addressId)
+			}
 		}
 		i++
 	}
 	return coins, nil
 }
 
-func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*models.Validator, error) {
-	var validators []*models.Validator
+func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*domain.Validator, error) {
+	var validators []*domain.Validator
 	for _, candidate := range genesis.AppState.Candidates {
 		ownerAddress, err := egu.addressRepository.FindId(helpers.RemovePrefix(candidate.OwnerAddress))
 		if err != nil {
@@ -178,23 +215,32 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*model
 		if err != nil {
 			egu.logger.Error(err)
 		}
-		status := uint8(candidate.Status)
+
+		status := candidate.Status
 		commission, err := strconv.ParseUint(candidate.Commission, 10, 64)
 		stake := candidate.TotalBipStake
-		validators = append(append(validators, &models.Validator{
+		validator, err := egu.validatorRepository.Add(&domain.Validator{
 			OwnerAddressID:  &ownerAddress,
 			RewardAddressID: &rewardAddress,
-			PublicKey:       helpers.RemovePrefix(candidate.PubKey),
 			Status:          &status,
 			Commission:      &commission,
 			TotalStake:      &stake,
-		}))
+		})
+		if err != nil {
+			egu.logger.Panic(err)
+		}
+
+		_, err = egu.validatorRepository.AddPk(helpers.RemovePrefix(candidate.PubKey), validator.ID)
+		if err != nil {
+			egu.logger.Panic(err)
+		}
+
 	}
 
 	return validators, nil
 }
 
-func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string, wg *sync.WaitGroup) {
+func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string) {
 	AddrChunkSize := os.Getenv("EGU_ADDRESS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(AddrChunkSize, 10, 64)
 	helpers.HandleError(err)
@@ -217,26 +263,15 @@ func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string, wg *sync.W
 		}
 		wgAddresses.Wait()
 	}
-	wg.Done()
-	egu.addressRepository.Close()
 	egu.logger.Info("Addresses has been uploaded")
 }
 
-func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.WaitGroup) {
+func (egu *ExplorerGenesisUploader) saveCoins(coins []*domain.Coin) {
 	egu.logger.Info("Saving coins to DB...")
 	coinsChunkSize := os.Getenv("EGU_COINS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(coinsChunkSize, 10, 64)
 	helpers.HandleError(err)
-	list := []*models.Coin{
-		{
-			Crr:            100,
-			MaxSupply:      "",
-			Volume:         "",
-			ReserveBalance: "",
-			Name:           os.Getenv("MINTER_BASE_COIN"),
-			Symbol:         os.Getenv("MINTER_BASE_COIN"),
-		},
-	}
+	var list []*domain.Coin
 	list = append(list, coins...)
 	wgCoins := new(sync.WaitGroup)
 	chunksCount := int(math.Ceil(float64(len(list)) / float64(chunkSize)))
@@ -254,11 +289,10 @@ func (egu *ExplorerGenesisUploader) saveCoins(coins []*models.Coin, wg *sync.Wai
 		}()
 	}
 	wgCoins.Wait()
-	wg.Done()
 	egu.logger.Info("Coins has been uploaded")
 }
 
-func (egu *ExplorerGenesisUploader) saveCandidates(validators []*models.Validator) error {
+func (egu *ExplorerGenesisUploader) saveCandidates(validators []*domain.Validator) error {
 	egu.logger.Info("Saving validators to DB...")
 	validatorsChunkSize := os.Getenv("EGU_VALIDATORS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(validatorsChunkSize, 10, 64)
@@ -285,10 +319,10 @@ func (egu *ExplorerGenesisUploader) saveCandidates(validators []*models.Validato
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*models.Balance, error) {
+func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*domain.Balance, error) {
 	chunkSize := 1000
-	var results []*models.Balance
-	ch := make(chan []*models.Balance)
+	var results []*domain.Balance
+	ch := make(chan []*domain.Balance)
 
 	if len(genesis.AppState.Accounts) > 0 {
 		go func() {
@@ -306,19 +340,21 @@ func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*models
 			}
 			wgBalances.Add(1)
 			go func() {
-				var balances []*models.Balance
+				var balances []*domain.Balance
 				for _, account := range genesis.AppState.Accounts[start:end] {
 					addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(account.Address))
 					if err != nil {
 						egu.logger.Error(err)
+						continue
 					}
 					for _, bls := range account.Balance {
-						coinId, err := egu.coinRepository.FindIdBySymbol(bls.Coin)
-						if err != nil {
-							egu.logger.Error(err)
-						}
-						balances = append(balances, &models.Balance{
-							CoinID:    coinId,
+						//coinId, err := egu.coinRepository.FindIdBySymbol(bls.Coin)
+						//if err != nil {
+						//	egu.logger.Error(err)
+						//}
+
+						balances = append(balances, &domain.Balance{
+							CoinID:    uint64(bls.Coin),
 							AddressID: addressId,
 							Value:     bls.Value,
 						})
@@ -334,7 +370,7 @@ func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*models
 	return results, nil
 }
 
-func (egu *ExplorerGenesisUploader) saveBalances(balances []*models.Balance) error {
+func (egu *ExplorerGenesisUploader) saveBalances(balances []*domain.Balance) error {
 	egu.logger.Info("Saving balances to DB...")
 	balancesChunkSize := os.Getenv("EGU_BALANCES_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(balancesChunkSize, 10, 64)
@@ -362,14 +398,10 @@ func (egu *ExplorerGenesisUploader) saveBalances(balances []*models.Balance) err
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*models.Stake, error) {
-	var stakes []*models.Stake
+func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*domain.Stake, error) {
+	var stakes []*domain.Stake
 	for _, candidate := range genesis.AppState.Candidates {
 		for _, stake := range candidate.Stakes {
-			coinId, err := egu.coinRepository.FindIdBySymbol(stake.Coin)
-			if err != nil {
-				egu.logger.Error(err)
-			}
 			ownerId, err := egu.addressRepository.FindId(helpers.RemovePrefix(stake.Owner))
 			if err != nil {
 				egu.logger.Error(err)
@@ -378,8 +410,8 @@ func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*models.S
 			if err != nil {
 				egu.logger.Error(err)
 			}
-			stakes = append(stakes, &models.Stake{
-				CoinID:         coinId,
+			stakes = append(stakes, &domain.Stake{
+				CoinID:         uint64(stake.Coin),
 				OwnerAddressID: ownerId,
 				ValidatorID:    validatorId,
 				Value:          stake.Value,
@@ -390,7 +422,7 @@ func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*models.S
 	return stakes, nil
 }
 
-func (egu *ExplorerGenesisUploader) saveStakes(stakes []*models.Stake) error {
+func (egu *ExplorerGenesisUploader) saveStakes(stakes []*domain.Stake) error {
 	egu.logger.Info("Saving stakes to DB...")
 	stakesChunkSize := os.Getenv("EGU_STAKE_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(stakesChunkSize, 10, 64)
@@ -428,13 +460,9 @@ func (egu *ExplorerGenesisUploader) isEmptyDB() bool {
 	if err != nil {
 		panic(err)
 	}
-	coinsCount, err := egu.coinRepository.GetCoinsCount()
-	if err != nil {
-		panic(err)
-	}
 	validatorCount, err := egu.validatorRepository.GetValidatorsCount()
 	if err != nil {
 		panic(err)
 	}
-	return addressesCount == 0 && balancesCount == 0 && coinsCount == 0 && validatorCount == 0
+	return addressesCount == 0 && balancesCount == 0 && validatorCount == 0
 }
