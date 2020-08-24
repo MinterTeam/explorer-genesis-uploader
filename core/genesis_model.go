@@ -51,7 +51,7 @@ type Validator struct {
 }
 
 type Candidate struct {
-	ID             string  `json:"id"`
+	ID             uint    `json:"id"`
 	RewardAddress  string  `json:"reward_address"`
 	OwnerAddress   string  `json:"owner_address"`
 	ControlAddress string  `json:"control_address"`

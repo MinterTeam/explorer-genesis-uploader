@@ -1,7 +1,7 @@
 package domain
 
 type Coin struct {
-	ID             uint   `json:"id" pg:",use_zero"`
+	ID             uint   `json:"id"  pg:",use_zero"`
 	Name           string `json:"name"`
 	Symbol         string `json:"symbol"`
 	Volume         string `json:"volume"`
