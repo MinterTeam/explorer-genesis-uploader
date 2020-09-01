@@ -44,7 +44,7 @@ type AppState struct {
 type Validator struct {
 	RewardAddress string `json:"reward_address"`
 	TotalBipStake string `json:"total_bip_stake"`
-	PubKey        string `json:"pub_key"`
+	PublicKey     string `json:"public_key"`
 	Commission    string `json:"commission"`
 	AccumReward   string `json:"accum_reward"`
 	AbsentTimes   string `json:"absent_times"`
@@ -56,7 +56,7 @@ type Candidate struct {
 	OwnerAddress   string  `json:"owner_address"`
 	ControlAddress string  `json:"control_address"`
 	TotalBipStake  string  `json:"total_bip_stake"`
-	PubKey         string  `json:"pub_key"`
+	PublicKey      string  `json:"public_key"`
 	Commission     string  `json:"commission"`
 	Stakes         []Stake `json:"stakes"`
 	Updates        []Stake `json:"updates"`

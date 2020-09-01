@@ -220,6 +220,7 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*domai
 		commission, err := strconv.ParseUint(candidate.Commission, 10, 64)
 		stake := candidate.TotalBipStake
 		validator, err := egu.validatorRepository.Add(&domain.Validator{
+			PublicKey:       helpers.RemovePrefix(candidate.PublicKey),
 			OwnerAddressID:  &ownerAddress,
 			RewardAddressID: &rewardAddress,
 			Status:          &status,
@@ -230,7 +231,7 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*domai
 			egu.logger.Panic(err)
 		}
 
-		_, err = egu.validatorRepository.AddPk(helpers.RemovePrefix(candidate.PubKey), validator.ID)
+		_, err = egu.validatorRepository.AddPk(helpers.RemovePrefix(candidate.PublicKey), validator.ID)
 		if err != nil {
 			egu.logger.Panic(err)
 		}
@@ -406,7 +407,7 @@ func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*domain.S
 			if err != nil {
 				egu.logger.Error(err)
 			}
-			validatorId, err := egu.validatorRepository.FindIdByPk(helpers.RemovePrefix(candidate.PubKey))
+			validatorId, err := egu.validatorRepository.FindIdByPk(helpers.RemovePrefix(candidate.PublicKey))
 			if err != nil {
 				egu.logger.Error(err)
 			}

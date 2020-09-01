@@ -52,3 +52,10 @@ func (r *Coin) FindIdBySymbol(symbol string) (uint64, error) {
 func (r *Coin) GetCoinsCount() (int, error) {
 	return r.db.Model((*domain.Coin)(nil)).Where("symbol != ?", os.Getenv("MINTER_BASE_COIN")).Count()
 }
+
+func (r *Coin) ChangeSequence(i int) error {
+	_, err := r.db.Model().Exec(`
+		alter sequence coins_id_seq START WITH ?;
+	`, i)
+	return err
+}
