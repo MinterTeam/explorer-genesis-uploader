@@ -28,7 +28,7 @@ func New() *ExplorerGenesisUploader {
 	//Init Logger
 	logger := logrus.New()
 	logger.SetOutput(os.Stdout)
-	logger.SetReportCaller(true)
+	logger.SetReportCaller(false)
 	logger.SetFormatter(&logrus.TextFormatter{
 		DisableColors: false,
 		FullTimestamp: true,
@@ -326,10 +326,13 @@ func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*domain
 	ch := make(chan []*domain.Balance)
 
 	if len(genesis.AppState.Accounts) > 0 {
+		wg := new(sync.WaitGroup)
+		wg.Add(1)
 		go func() {
 			for v := range ch {
 				results = append(results, v...)
 			}
+			wg.Done()
 		}()
 		wgBalances := new(sync.WaitGroup)
 		chunksCount := int(math.Ceil(float64(len(genesis.AppState.Accounts)) / float64(chunkSize)))
@@ -349,11 +352,6 @@ func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*domain
 						continue
 					}
 					for _, bls := range account.Balance {
-						//coinId, err := egu.coinRepository.FindIdBySymbol(bls.Coin)
-						//if err != nil {
-						//	egu.logger.Error(err)
-						//}
-
 						balances = append(balances, &domain.Balance{
 							CoinID:    uint64(bls.Coin),
 							AddressID: addressId,
@@ -366,8 +364,9 @@ func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*domain
 			}()
 		}
 		wgBalances.Wait()
+		close(ch)
+		wg.Wait()
 	}
-	close(ch)
 	return results, nil
 }
 
