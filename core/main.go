@@ -1,13 +1,13 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/MinterTeam/explorer-genesis-uploader/domain"
 	"github.com/MinterTeam/explorer-genesis-uploader/repository"
 	"github.com/MinterTeam/minter-explorer-tools/v4/helpers"
+	"github.com/MinterTeam/minter-go-sdk/v2/api/grpc_client"
+	"github.com/MinterTeam/node-grpc-gateway/api_pb"
 	"github.com/go-pg/pg/v10"
-	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 	"math"
 	"os"
@@ -71,16 +71,11 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	egu.logger.Info("Getting genesis data...")
 
 	// Create a Resty Client
-	client := resty.New().SetTimeout(time.Minute).SetHostURL(fmt.Sprintf("%s", os.Getenv("NODE_API")))
-	data, err := client.R().Get("/genesis")
+	client, err := grpc_client.New(os.Getenv("NODE_API"))
 	helpers.HandleError(err)
 
-	genesisResponse := new(GenesisResponse)
-	err = json.Unmarshal(data.Body(), genesisResponse)
+	genesis, err := client.Genesis()
 	helpers.HandleError(err)
-	egu.logger.Info("Genesis data has been downloaded")
-
-	genesis := &genesisResponse.Result.Genesis
 
 	egu.logger.Info("Extracting addresses...")
 	addresses, err := egu.extractAddresses(genesis)
@@ -129,7 +124,7 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	return err
 }
 
-func (egu *ExplorerGenesisUploader) extractAddresses(genesis *Genesis) ([]string, error) {
+func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResponse) ([]string, error) {
 	addressesMap := make(map[string]struct{})
 	for _, candidate := range genesis.AppState.Candidates {
 		addressesMap[helpers.RemovePrefix(candidate.RewardAddress)] = struct{}{}
@@ -156,7 +151,7 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *Genesis) ([]string
 	return addresses, nil
 }
 
-func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*domain.Coin, error) {
+func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse) ([]*domain.Coin, error) {
 	var coins = make([]*domain.Coin, len(genesis.AppState.Coins)+1)
 	i := 1
 
@@ -172,24 +167,19 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*domain.Co
 	}
 
 	for _, c := range genesis.AppState.Coins {
-		crr, err := strconv.ParseUint(c.Crr, 10, 64)
-		if err != nil {
-			egu.logger.Error(err)
-		}
-
-		if c.ID == 0 {
-			egu.logger.Error(err)
+		if c.Id == 0 {
+			continue
 		}
 
 		coins[i] = &domain.Coin{
-			ID:        c.ID,
+			ID:        uint(c.Id),
 			Name:      c.Name,
 			Symbol:    c.Symbol,
 			Volume:    c.Volume,
-			Crr:       uint(crr),
+			Crr:       uint(c.Crr),
 			Reserve:   c.Reserve,
 			MaxSupply: c.MaxSupply,
-			Version:   c.Version,
+			Version:   uint(c.Version),
 		}
 		if c.OwnerAddress != "" {
 			addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(c.OwnerAddress))
@@ -204,7 +194,7 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *Genesis) ([]*domain.Co
 	return coins, nil
 }
 
-func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*domain.Validator, error) {
+func (egu ExplorerGenesisUploader) extractCandidates(genesis *api_pb.GenesisResponse) ([]*domain.Validator, error) {
 	var validators []*domain.Validator
 	for _, candidate := range genesis.AppState.Candidates {
 		ownerAddress, err := egu.addressRepository.FindId(helpers.RemovePrefix(candidate.OwnerAddress))
@@ -216,8 +206,8 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *Genesis) ([]*domai
 			egu.logger.Error(err)
 		}
 
-		status := candidate.Status
-		commission, err := strconv.ParseUint(candidate.Commission, 10, 64)
+		status := uint8(candidate.Status)
+		commission := candidate.Commission
 		stake := candidate.TotalBipStake
 		validator, err := egu.validatorRepository.Add(&domain.Validator{
 			PublicKey:       helpers.RemovePrefix(candidate.PublicKey),
@@ -320,7 +310,7 @@ func (egu *ExplorerGenesisUploader) saveCandidates(validators []*domain.Validato
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractBalances(genesis *Genesis) ([]*domain.Balance, error) {
+func (egu *ExplorerGenesisUploader) extractBalances(genesis *api_pb.GenesisResponse) ([]*domain.Balance, error) {
 	chunkSize := 1000
 	var results []*domain.Balance
 	ch := make(chan []*domain.Balance)
@@ -398,7 +388,7 @@ func (egu *ExplorerGenesisUploader) saveBalances(balances []*domain.Balance) err
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractStakes(genesis *Genesis) ([]*domain.Stake, error) {
+func (egu *ExplorerGenesisUploader) extractStakes(genesis *api_pb.GenesisResponse) ([]*domain.Stake, error) {
 	var stakes []*domain.Stake
 	for _, candidate := range genesis.AppState.Candidates {
 		for _, stake := range candidate.Stakes {
