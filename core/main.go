@@ -64,7 +64,7 @@ func New() *ExplorerGenesisUploader {
 func (egu *ExplorerGenesisUploader) Do() error {
 
 	if !egu.isEmptyDB() {
-		return errors.New("DB is not empty")
+		return errors.New("genesis has not been uploaded DB is not empty")
 	}
 
 	start := time.Now()
