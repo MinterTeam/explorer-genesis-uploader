@@ -60,6 +60,11 @@ func (r *Validator) AddPk(key string, validatorId uint) (*domain.ValidatorPublic
 	return vpk, err
 }
 
+func (r *Validator) SaveAllPk(vpk []*domain.ValidatorPublicKeys) error {
+	_, err := r.db.Model(&vpk).Insert()
+	return err
+}
+
 func (r *Validator) Add(v *domain.Validator) (*domain.Validator, error) {
 	_, err := r.db.Model(v).Insert()
 	return v, err

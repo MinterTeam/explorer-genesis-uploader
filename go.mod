@@ -4,8 +4,8 @@ go 1.12
 
 require (
 	github.com/MinterTeam/minter-explorer-tools/v4 v4.1.0
-	github.com/MinterTeam/minter-go-sdk/v2 v2.0.0-20200929092715-17e2787a1a32
-	github.com/MinterTeam/node-grpc-gateway v1.1.3-0.20200925002945-15b5cde8e354
+	github.com/MinterTeam/minter-go-sdk/v2 v2.0.0-20200929175613-050a64b6db57
+	github.com/MinterTeam/node-grpc-gateway v1.1.3-0.20200929175107-bc08f6f64978
 	github.com/go-pg/pg/v10 v10.0.0-beta.8
 	github.com/go-pg/urlstruct v0.5.1 // indirect
 	github.com/joho/godotenv v1.3.0

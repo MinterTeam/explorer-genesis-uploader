@@ -209,23 +209,17 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *api_pb.GenesisResp
 		status := uint8(candidate.Status)
 		commission := candidate.Commission
 		stake := candidate.TotalBipStake
-		validator, err := egu.validatorRepository.Add(&domain.Validator{
+
+		validator := &domain.Validator{
 			PublicKey:       helpers.RemovePrefix(candidate.PublicKey),
 			OwnerAddressID:  &ownerAddress,
 			RewardAddressID: &rewardAddress,
 			Status:          &status,
 			Commission:      &commission,
 			TotalStake:      &stake,
-		})
-		if err != nil {
-			egu.logger.Panic(err)
 		}
 
-		_, err = egu.validatorRepository.AddPk(helpers.RemovePrefix(candidate.PublicKey), validator.ID)
-		if err != nil {
-			egu.logger.Panic(err)
-		}
-
+		validators = append(validators, validator)
 	}
 
 	return validators, nil
@@ -285,27 +279,22 @@ func (egu *ExplorerGenesisUploader) saveCoins(coins []*domain.Coin) {
 
 func (egu *ExplorerGenesisUploader) saveCandidates(validators []*domain.Validator) error {
 	egu.logger.Info("Saving validators to DB...")
-	validatorsChunkSize := os.Getenv("APP_VALIDATORS_CHUNK_SIZE")
-	chunkSize, err := strconv.ParseInt(validatorsChunkSize, 10, 64)
-	helpers.HandleError(err)
 
 	if len(validators) > 0 {
-		wgCandidates := new(sync.WaitGroup)
-		chunksCount := int(math.Ceil(float64(len(validators)) / float64(chunkSize)))
-		for i := 0; i < chunksCount; i++ {
-			start := int(chunkSize) * i
-			end := start + int(chunkSize)
-			if end > len(validators) {
-				end = len(validators)
-			}
-			wgCandidates.Add(1)
-			go func() {
-				err := egu.validatorRepository.SaveAll(validators[start:end])
-				helpers.HandleError(err)
-				wgCandidates.Done()
-			}()
+		err := egu.validatorRepository.SaveAll(validators)
+		helpers.HandleError(err)
+
+		var vpk []*domain.ValidatorPublicKeys
+
+		for _, v := range validators {
+			vpk = append(vpk, &domain.ValidatorPublicKeys{
+				ValidatorId: v.ID,
+				Key:         v.PublicKey,
+			})
 		}
-		wgCandidates.Wait()
+
+		err = egu.validatorRepository.SaveAllPk(vpk)
+		helpers.HandleError(err)
 	}
 	return nil
 }
