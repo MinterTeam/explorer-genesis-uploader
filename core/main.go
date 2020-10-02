@@ -35,7 +35,7 @@ func New() *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.2",
+		"version": "1.2.2",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
@@ -137,8 +137,8 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResp
 		addressesMap[helpers.RemovePrefix(account.Address)] = struct{}{}
 	}
 	for _, coin := range genesis.AppState.Coins {
-		if coin.OwnerAddress != "" {
-			addressesMap[helpers.RemovePrefix(coin.OwnerAddress)] = struct{}{}
+		if coin.OwnerAddress != nil {
+			addressesMap[helpers.RemovePrefix(coin.OwnerAddress.Value)] = struct{}{}
 		}
 	}
 
@@ -181,8 +181,8 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse
 			MaxSupply: c.MaxSupply,
 			Version:   uint(c.Version),
 		}
-		if c.OwnerAddress != "" {
-			addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(c.OwnerAddress))
+		if c.OwnerAddress != nil {
+			addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(c.OwnerAddress.Value))
 			if err != nil {
 				egu.logger.Error(err)
 			} else {
