@@ -1,35 +1,24 @@
 package repository
 
 import (
-	"fmt"
-	"github.com/MinterTeam/minter-explorer-tools/v4/models"
-	"github.com/go-pg/pg/v9"
-	"os"
+	"github.com/MinterTeam/explorer-genesis-uploader/domain"
+	"github.com/go-pg/pg/v10"
 )
 
 type Balance struct {
 	db *pg.DB
 }
 
-func NewBalanceRepository() *Balance {
+func NewBalanceRepository(db *pg.DB) *Balance {
 	return &Balance{
-		db: pg.Connect(&pg.Options{
-			Addr:     fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
-			User:     os.Getenv("DB_USER"),
-			Database: os.Getenv("DB_NAME"),
-			Password: os.Getenv("DB_PASSWORD"),
-		}),
+		db: db,
 	}
 }
-func (r *Balance) SaveAll(balances []*models.Balance) error {
-	err := r.db.Insert(&balances)
+func (r *Balance) SaveAll(balances []*domain.Balance) error {
+	_, err := r.db.Model(&balances).Insert()
 	return err
 }
 
 func (r *Balance) GetBalancesCount() (int, error) {
-	return r.db.Model((*models.Balance)(nil)).Count()
-}
-
-func (r *Balance) Close() {
-	r.db.Close()
+	return r.db.Model((*domain.Balance)(nil)).Count()
 }

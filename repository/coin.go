@@ -1,9 +1,8 @@
 package repository
 
 import (
-	"fmt"
-	"github.com/MinterTeam/minter-explorer-tools/v4/models"
-	"github.com/go-pg/pg/v9"
+	"github.com/MinterTeam/explorer-genesis-uploader/domain"
+	"github.com/go-pg/pg/v10"
 	"os"
 	"sync"
 )
@@ -14,21 +13,16 @@ type Coin struct {
 	db       *pg.DB
 }
 
-func NewCoinRepository() *Coin {
+func NewCoinRepository(db *pg.DB) *Coin {
 	return &Coin{
 		cache:    new(sync.Map),
 		invCache: new(sync.Map),
-		db: pg.Connect(&pg.Options{
-			Addr:     fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
-			User:     os.Getenv("DB_USER"),
-			Database: os.Getenv("DB_NAME"),
-			Password: os.Getenv("DB_PASSWORD"),
-		}),
+		db:       db,
 	}
 }
 
-func (r *Coin) SaveAll(coins []*models.Coin) error {
-	err := r.db.Insert(&coins)
+func (r *Coin) SaveAll(coins []*domain.Coin) error {
+	_, err := r.db.Model(&coins).Insert()
 	for _, coin := range coins {
 		r.cache.Store(coin.Symbol, coin.ID)
 		r.invCache.Store(coin.ID, coin.Symbol)
@@ -43,7 +37,7 @@ func (r *Coin) FindIdBySymbol(symbol string) (uint64, error) {
 	if ok {
 		return id.(uint64), nil
 	}
-	coin := new(models.Coin)
+	coin := new(domain.Coin)
 	err := r.db.Model(coin).
 		Column("id").
 		Where("symbol = ?", symbol).
@@ -52,13 +46,16 @@ func (r *Coin) FindIdBySymbol(symbol string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return coin.ID, nil
+	return uint64(coin.ID), nil
 }
 
 func (r *Coin) GetCoinsCount() (int, error) {
-	return r.db.Model((*models.Coin)(nil)).Where("symbol != ?", os.Getenv("MINTER_BASE_COIN")).Count()
+	return r.db.Model((*domain.Coin)(nil)).Where("symbol != ?", os.Getenv("MINTER_BASE_COIN")).Count()
 }
 
-func (r *Coin) Close() {
-	r.db.Close()
+func (r *Coin) ChangeSequence(i int) error {
+	_, err := r.db.Model().Exec(`
+		alter sequence coins_id_seq START WITH ?;
+	`, i)
+	return err
 }
