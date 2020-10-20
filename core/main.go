@@ -35,7 +35,7 @@ func New() *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.2.3",
+		"version": "1.2.4",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
@@ -117,8 +117,16 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	err = egu.saveStakes(stakes)
 	helpers.HandleError(err)
 	egu.logger.Info("Stakes has been uploaded")
-	egu.logger.Info("Upload complete")
 
+	egu.logger.Info("Extracting unbonds...")
+	unbonds, err := egu.extractUnbonds(genesis)
+	helpers.HandleError(err)
+	egu.logger.Info(fmt.Sprintf("%d unbonds have been extracted", len(unbonds)))
+	err = egu.saveUnbonds(unbonds)
+	helpers.HandleError(err)
+	egu.logger.Info("Unbonds has been uploaded")
+
+	egu.logger.Info("Upload complete")
 	elapsed := time.Since(start)
 	egu.logger.Info("Processing time: ", elapsed)
 	return err
@@ -140,6 +148,9 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResp
 		if coin.OwnerAddress != nil {
 			addressesMap[helpers.RemovePrefix(coin.OwnerAddress.Value)] = struct{}{}
 		}
+	}
+	for _, data := range genesis.AppState.FrozenFunds {
+		addressesMap[helpers.RemovePrefix(data.CandidateKey.Value)] = struct{}{}
 	}
 
 	var addresses = make([]string, len(addressesMap))
@@ -444,4 +455,57 @@ func (egu *ExplorerGenesisUploader) isEmptyDB() bool {
 		panic(err)
 	}
 	return addressesCount == 0 && balancesCount == 0 && validatorCount == 0
+}
+
+func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *api_pb.GenesisResponse) ([]*domain.Unbond, error) {
+	var unbonds []*domain.Unbond
+	for _, data := range genesis.AppState.FrozenFunds {
+		addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(data.Address))
+		if err != nil {
+			egu.logger.WithField("address", data.Address).Error(err)
+			continue
+		}
+		validatorId, err := egu.validatorRepository.FindIdByPk(helpers.RemovePrefix(data.CandidateKey.Value))
+		if err != nil {
+			egu.logger.WithField("validator", data.CandidateKey.Value).Error(err)
+			continue
+		}
+		unbonds = append(unbonds, &domain.Unbond{
+			AddressId:   uint(addressId),
+			ValidatorId: validatorId,
+			BlockId:     uint(data.Height),
+			CoinId:      uint(data.Coin),
+			Value:       data.Value,
+		})
+	}
+	return unbonds, nil
+}
+
+func (egu *ExplorerGenesisUploader) saveUnbonds(unbonds []*domain.Unbond) error {
+	egu.logger.Info("Saving stakes to DB...")
+	stakesChunkSize := os.Getenv("APP_STAKE_CHUNK_SIZE")
+	chunkSize, err := strconv.ParseInt(stakesChunkSize, 10, 64)
+	helpers.HandleError(err)
+
+	if len(unbonds) > 0 {
+		wgStakes := new(sync.WaitGroup)
+		chunksCount := int(math.Ceil(float64(len(unbonds)) / float64(chunkSize)))
+		for i := 0; i < chunksCount; i++ {
+			start := int(chunkSize) * i
+			end := start + int(chunkSize)
+			if end > len(unbonds) {
+				end = len(unbonds)
+			}
+			wgStakes.Add(1)
+			go func() {
+				err := egu.validatorRepository.SaveAllUnbonds(unbonds[start:end])
+				if err != nil {
+					egu.logger.Error(err)
+				}
+				wgStakes.Done()
+			}()
+			wgStakes.Wait()
+		}
+	}
+	return nil
 }

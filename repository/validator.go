@@ -47,6 +47,11 @@ func (r *Validator) SaveAllStakes(stakes []*domain.Stake) error {
 	return err
 }
 
+func (r *Validator) SaveAllUnbonds(list []*domain.Unbond) error {
+	_, err := r.db.Model(&list).Insert()
+	return err
+}
+
 func (r *Validator) GetValidatorsCount() (int, error) {
 	return r.db.Model((*domain.Validator)(nil)).Count()
 }
