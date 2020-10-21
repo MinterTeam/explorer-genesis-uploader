@@ -35,7 +35,7 @@ func New() *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.2.4",
+		"version": "1.2.5",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
@@ -150,7 +150,7 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResp
 		}
 	}
 	for _, data := range genesis.AppState.FrozenFunds {
-		addressesMap[helpers.RemovePrefix(data.CandidateKey.Value)] = struct{}{}
+		addressesMap[helpers.RemovePrefix(data.Address)] = struct{}{}
 	}
 
 	var addresses = make([]string, len(addressesMap))
