@@ -8,6 +8,6 @@ type Coin struct {
 	Crr            uint   `json:"crr"`
 	Reserve        string `json:"reserve"`
 	MaxSupply      string `json:"max_supply"`
-	Version        uint   `json:"version"`
+	Version        uint   `json:"version"    pg:",use_zero"`
 	OwnerAddressId uint   `json:"owner_address"`
 }
