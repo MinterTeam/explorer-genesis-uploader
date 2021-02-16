@@ -168,6 +168,7 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse
 
 	coins[0] = &domain.Coin{
 		ID:        0,
+		Type:      domain.CoinTypeBase,
 		Name:      "Base coin",
 		Symbol:    os.Getenv("MINTER_BASE_COIN"),
 		Volume:    "0",
