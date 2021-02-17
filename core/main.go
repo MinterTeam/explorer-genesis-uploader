@@ -134,6 +134,7 @@ func (egu *ExplorerGenesisUploader) Do() error {
 
 func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResponse) ([]string, error) {
 	addressesMap := make(map[string]struct{})
+	addressesMap["0000000000000000000000000000000000000000"] = struct{}{}
 	for _, candidate := range genesis.AppState.Candidates {
 		addressesMap[helpers.RemovePrefix(candidate.RewardAddress)] = struct{}{}
 		addressesMap[helpers.RemovePrefix(candidate.OwnerAddress)] = struct{}{}
