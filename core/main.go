@@ -71,7 +71,7 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	egu.logger.Info("Getting genesis data...")
 
 	// Create a Resty Client
-	client, err := grpc_client.New(os.Getenv("NODE_API"))
+	client, err := grpc_client.New(os.Getenv("NODE_GRPC"))
 	helpers.HandleError(err)
 
 	genesis, err := client.Genesis()
