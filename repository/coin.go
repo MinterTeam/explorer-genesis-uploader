@@ -49,6 +49,20 @@ func (r *Coin) FindIdBySymbol(symbol string) (uint64, error) {
 	return uint64(coin.ID), nil
 }
 
+// Find coin id by symbol
+func (r *Coin) FindBySymbol(symbol string) (*domain.Coin, error) {
+	coin := new(domain.Coin)
+	err := r.db.Model(coin).
+		Where("symbol = ?", symbol).
+		Limit(1).
+		Select()
+
+	if err != nil {
+		return nil, err
+	}
+	return coin, nil
+}
+
 func (r *Coin) GetCoinsCount() (int, error) {
 	return r.db.Model((*domain.Coin)(nil)).Where("symbol != ?", os.Getenv("MINTER_BASE_COIN")).Count()
 }

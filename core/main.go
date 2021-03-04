@@ -18,11 +18,12 @@ import (
 )
 
 type ExplorerGenesisUploader struct {
-	addressRepository   *repository.Address
-	balanceRepository   *repository.Balance
-	coinRepository      *repository.Coin
-	validatorRepository *repository.Validator
-	logger              *logrus.Entry
+	addressRepository       *repository.Address
+	balanceRepository       *repository.Balance
+	coinRepository          *repository.Coin
+	validatorRepository     *repository.Validator
+	liquidityPoolRepository *repository.LiquidityPool
+	logger                  *logrus.Entry
 }
 
 func New() *ExplorerGenesisUploader {
@@ -51,13 +52,15 @@ func New() *ExplorerGenesisUploader {
 	coinRepository := repository.NewCoinRepository(db)
 	validatorRepository := repository.NewValidatorRepository(db)
 	balanceRepository := repository.NewBalanceRepository(db)
+	liquidityPoolRepository := repository.NewLiquidityPoolRepository(db)
 
 	return &ExplorerGenesisUploader{
-		addressRepository:   addressRepository,
-		balanceRepository:   balanceRepository,
-		coinRepository:      coinRepository,
-		validatorRepository: validatorRepository,
-		logger:              contextLogger,
+		addressRepository:       addressRepository,
+		balanceRepository:       balanceRepository,
+		coinRepository:          coinRepository,
+		validatorRepository:     validatorRepository,
+		liquidityPoolRepository: liquidityPoolRepository,
+		logger:                  contextLogger,
 	}
 }
 
@@ -125,6 +128,14 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	err = egu.saveUnbonds(unbonds)
 	helpers.HandleError(err)
 	egu.logger.Info("Unbonds has been uploaded")
+
+	egu.logger.Info("Extracting liquidity pools...")
+	lpList, err := egu.extractLiquidityPool(genesis)
+	helpers.HandleError(err)
+	egu.logger.Info(fmt.Sprintf("%d liquidity pools have been extracted", len(lpList)))
+	err = egu.saveLiquidityPool(lpList)
+	helpers.HandleError(err)
+	egu.logger.Info("Liquidity pools has been uploaded")
 
 	egu.logger.Info("Upload complete")
 	elapsed := time.Since(start)
@@ -507,6 +518,41 @@ func (egu *ExplorerGenesisUploader) saveUnbonds(unbonds []*domain.Unbond) error 
 				wgStakes.Done()
 			}()
 			wgStakes.Wait()
+		}
+	}
+	return nil
+}
+
+func (egu *ExplorerGenesisUploader) extractLiquidityPool(genesis *api_pb.GenesisResponse) ([]*domain.LiquidityPool, error) {
+	var list []*domain.LiquidityPool
+	for _, data := range genesis.AppState.Pools {
+
+		token, err := egu.coinRepository.FindBySymbol(fmt.Sprintf("PL-%d", data.Id))
+		if err != nil {
+			egu.logger.WithField("pool_id", data.Id).Error(err)
+			continue
+		}
+
+		list = append(list, &domain.LiquidityPool{
+			Id:               data.Id,
+			TokenId:          uint64(token.ID),
+			FirstCoinId:      data.Coin0,
+			SecondCoinId:     data.Coin1,
+			FirstCoinVolume:  data.Reserve0,
+			SecondCoinVolume: data.Reserve1,
+			Liquidity:        token.Volume,
+		})
+	}
+	return list, nil
+}
+
+func (egu *ExplorerGenesisUploader) saveLiquidityPool(pools []*domain.LiquidityPool) error {
+	egu.logger.Info("Saving liquidity pool to DB...")
+
+	if len(pools) > 0 {
+		err := egu.liquidityPoolRepository.SaveAll(pools)
+		if err != nil {
+			egu.logger.Error(err)
 		}
 	}
 	return nil
