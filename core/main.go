@@ -478,7 +478,10 @@ func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *api_pb.GenesisRespon
 			egu.logger.WithField("address", data.Address).Error(err)
 			continue
 		}
-		validatorId, err := egu.validatorRepository.FindIdByPk(helpers.RemovePrefix(data.CandidateKey.Value))
+		if data.CandidateKey.GetValue() == "" {
+			continue
+		}
+		validatorId, err := egu.validatorRepository.FindIdByPk(helpers.RemovePrefix(data.CandidateKey.GetValue()))
 		if err != nil {
 			egu.logger.WithField("validator", data.CandidateKey.Value).Error(err)
 			continue
