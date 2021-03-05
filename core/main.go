@@ -530,7 +530,7 @@ func (egu *ExplorerGenesisUploader) extractLiquidityPool(genesis *api_pb.Genesis
 	var list []*domain.LiquidityPool
 	for _, data := range genesis.AppState.Pools {
 
-		token, err := egu.coinRepository.FindBySymbol(fmt.Sprintf("PL-%d", data.Id))
+		token, err := egu.coinRepository.FindBySymbol(fmt.Sprintf("LP-%d", data.Id))
 		if err != nil {
 			egu.logger.WithField("pool_id", data.Id).Error(err)
 			continue
