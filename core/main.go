@@ -197,6 +197,7 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse
 
 		coins[i] = &domain.Coin{
 			ID:        uint(c.Id),
+			Type:      domain.CoinTypeBase,
 			Name:      c.Name,
 			Symbol:    c.Symbol,
 			Volume:    c.Volume,
