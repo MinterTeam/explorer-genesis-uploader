@@ -36,7 +36,7 @@ func New() *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.2.5",
+		"version": "1.3.4",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
