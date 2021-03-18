@@ -18,12 +18,17 @@ import (
 )
 
 type ExplorerGenesisUploader struct {
+	startBlock              uint64
 	addressRepository       *repository.Address
 	balanceRepository       *repository.Balance
 	coinRepository          *repository.Coin
 	validatorRepository     *repository.Validator
 	liquidityPoolRepository *repository.LiquidityPool
 	logger                  *logrus.Entry
+}
+
+func (egu *ExplorerGenesisUploader) StartBlock() uint64 {
+	return egu.startBlock
 }
 
 func New() *ExplorerGenesisUploader {
@@ -36,7 +41,7 @@ func New() *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.3.5",
+		"version": "1.3.6",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
@@ -79,6 +84,8 @@ func (egu *ExplorerGenesisUploader) Do() error {
 
 	genesis, err := client.Genesis()
 	helpers.HandleError(err)
+
+	egu.startBlock = genesis.InitialHeight
 
 	egu.logger.Info("Extracting addresses...")
 	addresses, err := egu.extractAddresses(genesis)
