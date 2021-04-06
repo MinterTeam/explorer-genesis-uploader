@@ -1,6 +1,7 @@
 package core
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/MinterTeam/explorer-genesis-uploader/domain"
@@ -35,7 +36,7 @@ func New() *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.2.5",
+		"version": "1.2.5-pg-ssl",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
@@ -44,6 +45,9 @@ func New() *ExplorerGenesisUploader {
 		User:     os.Getenv("DB_USER"),
 		Database: os.Getenv("DB_NAME"),
 		Password: os.Getenv("DB_PASSWORD"),
+		TLSConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
 	})
 
 	// Repositories
