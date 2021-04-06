@@ -51,9 +51,6 @@ func New() *ExplorerGenesisUploader {
 		User:     os.Getenv("DB_USER"),
 		Database: os.Getenv("DB_NAME"),
 		Password: os.Getenv("DB_PASSWORD"),
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
 	}
 
 	if os.Getenv("POSTGRES_SSL_ENABLED") == "true"{
