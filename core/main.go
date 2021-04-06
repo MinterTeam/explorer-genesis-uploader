@@ -46,7 +46,7 @@ func New() *ExplorerGenesisUploader {
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
-	db := pg.Connect(&pg.Options{
+	pgOptions :=&pg.Options{
 		Addr:     fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
 		User:     os.Getenv("DB_USER"),
 		Database: os.Getenv("DB_NAME"),
@@ -54,7 +54,15 @@ func New() *ExplorerGenesisUploader {
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-	})
+	}
+
+	if os.Getenv("POSTGRES_SSL_ENABLED") == "true"{
+		pgOptions.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
+
+	db := pg.Connect(pgOptions)
 
 	// Repositories
 	addressRepository := repository.NewAddressRepository(db)
