@@ -46,14 +46,14 @@ func New() *ExplorerGenesisUploader {
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
-	pgOptions :=&pg.Options{
+	pgOptions := &pg.Options{
 		Addr:     fmt.Sprintf("%s:%s", os.Getenv("DB_HOST"), os.Getenv("DB_PORT")),
 		User:     os.Getenv("DB_USER"),
 		Database: os.Getenv("DB_NAME"),
 		Password: os.Getenv("DB_PASSWORD"),
 	}
 
-	if os.Getenv("POSTGRES_SSL_ENABLED") == "true"{
+	if os.Getenv("POSTGRES_SSL_ENABLED") == "true" {
 		pgOptions.TLSConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
@@ -252,6 +252,7 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *api_pb.GenesisResp
 		stake := candidate.TotalBipStake
 
 		validator := &domain.Validator{
+			ID:              uint(candidate.Id),
 			PublicKey:       helpers.RemovePrefix(candidate.PublicKey),
 			OwnerAddressID:  &ownerAddress,
 			RewardAddressID: &rewardAddress,
@@ -498,14 +499,9 @@ func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *api_pb.GenesisRespon
 		if data.CandidateKey.GetValue() == "" {
 			continue
 		}
-		validatorId, err := egu.validatorRepository.FindIdByPk(helpers.RemovePrefix(data.CandidateKey.GetValue()))
-		if err != nil {
-			egu.logger.WithField("validator", data.CandidateKey.Value).Error(err)
-			continue
-		}
 		unbonds = append(unbonds, &domain.Unbond{
 			AddressId:   uint(addressId),
-			ValidatorId: validatorId,
+			ValidatorId: uint(data.CandidateId),
 			BlockId:     uint(data.Height),
 			CoinId:      uint(data.Coin),
 			Value:       data.Value,
