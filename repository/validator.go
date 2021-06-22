@@ -23,8 +23,19 @@ func (r *Validator) SaveAll(validators []*domain.Validator) error {
 	return err
 }
 
-//Find validator with public key.
-//Return Validator ID
+// GetById Find validator with public key.
+// Return ValidatorID
+func (r *Validator) GetById(id uint) (uint, error) {
+	vpk := new(domain.ValidatorPublicKeys)
+	err := r.db.Model(vpk).Where("validator_id = ?", id).Select()
+	if err != nil {
+		return 0, err
+	}
+	return vpk.ValidatorId, nil
+}
+
+// FindIdByPk Find validator with public key.
+// Return Validator ID
 func (r *Validator) FindIdByPk(pk string) (uint, error) {
 	//First look in the cache
 	id, ok := r.cache.Load(pk)

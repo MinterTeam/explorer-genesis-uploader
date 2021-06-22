@@ -1,0 +1,14 @@
+Debug = false
+PostgresHost = ""
+PostgresPort = ""
+PostgresDB = ""
+PostgresUser = ""
+PostgresPassword = ""
+PostgresSSLEnabled = false
+MinterBaseCoin = "BIP"
+NodeGrpc = ""
+AddressChunkSize = 10000
+CoinsChunkSize = 1000
+BalanceChunkSize = 1000
+StakeChunkSize = 1000
+ValidatorChunkSize = 1000
