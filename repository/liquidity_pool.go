@@ -10,6 +10,11 @@ func (r *LiquidityPool) SaveAll(list []*domain.LiquidityPool) error {
 	return err
 }
 
+func (r *LiquidityPool) SaveAllOrders(orders []domain.Order) error {
+	_, err := r.db.Model(&orders).Insert()
+	return err
+}
+
 type LiquidityPool struct {
 	db *pg.DB
 }

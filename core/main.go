@@ -2,21 +2,26 @@ package core
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/MinterTeam/explorer-genesis-uploader/domain"
 	"github.com/MinterTeam/explorer-genesis-uploader/env"
+	"github.com/MinterTeam/explorer-genesis-uploader/helpers"
 	"github.com/MinterTeam/explorer-genesis-uploader/repository"
-	"github.com/MinterTeam/minter-explorer-tools/v4/helpers"
 	"github.com/MinterTeam/minter-go-sdk/v2/api/grpc_client"
-	"github.com/MinterTeam/node-grpc-gateway/api_pb"
 	"github.com/go-pg/pg/v10"
 	"github.com/sirupsen/logrus"
 	"math"
+	"math/big"
 	"os"
 	"sync"
 	"time"
 )
+
+//-file=./tmp/genesis.json
+var file = flag.String(`file`, "", `Path to genesis json file`)
 
 type ExplorerGenesisUploader struct {
 	startBlock              uint64
@@ -43,7 +48,7 @@ func New(cfg env.Config) *ExplorerGenesisUploader {
 		FullTimestamp: true,
 	})
 	contextLogger := logger.WithFields(logrus.Fields{
-		"version": "1.3.9",
+		"version": "1.4.0",
 		"app":     "Minter Explorer Explorer Genesis Uploader",
 	})
 
@@ -89,96 +94,152 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	start := time.Now()
 	egu.logger.Info("Getting genesis data...")
 
-	// Create a Resty Client
-	client, err := grpc_client.New(egu.env.NodeGrpc)
-	if err != nil {
-		panic(err)
-	}
+	var genesis *domain.Genesis
 
-	genesis, err := client.Genesis()
-	if err != nil {
-		panic(err)
+	if *file != "" {
+
+		var gf *domain.GenesisFile
+
+		jsonFile, err := os.Open(*file)
+		if err != nil {
+			panic(err)
+		}
+		defer jsonFile.Close()
+
+		dec := json.NewDecoder(jsonFile)
+		dec.UseNumber()
+
+		err = dec.Decode(gf)
+		if err != nil {
+			panic(err)
+		}
+
+	} else {
+		client, err := grpc_client.New(egu.env.NodeGrpc)
+		if err != nil {
+			panic(err)
+		}
+		genesisResponse, err := client.Genesis()
+		if err != nil {
+			panic(err)
+		}
+
+		egu.startBlock = genesisResponse.InitialHeight
+
+		genesis = egu.convertResponseToModel(genesisResponse)
 	}
 
 	egu.startBlock = genesis.InitialHeight
 
+	egu.logger.Info(fmt.Sprintf("Genesis has been downloaded. Processing time %s", time.Since(start)))
+
 	egu.logger.Info("Extracting addresses...")
+	startOperation := time.Now()
 	addresses, err := egu.extractAddresses(genesis)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d addresses has been extracted", len(addresses)))
-
+	egu.logger.Info(fmt.Sprintf("%d addresses has been extracted. Processing time %s", len(addresses), time.Since(startOperation)))
+	startOperation = time.Now()
 	egu.saveAddresses(addresses)
+	egu.logger.Info(fmt.Sprintf("Addresses has been saved. Processing time %s", time.Since(startOperation)))
 
 	egu.logger.Info("Extracting coins...")
+	startOperation = time.Now()
 	coins, err := egu.extractCoins(genesis)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d coins has been extracted", len(coins)+1))
-
+	egu.logger.Info(fmt.Sprintf("%d coins has been extracted. Processing time %s", len(coins)+1, time.Since(startOperation)))
+	startOperation = time.Now()
 	egu.saveCoins(coins)
+	egu.logger.Info(fmt.Sprintf("Coins has been saved. Processing time %s", time.Since(startOperation)))
 
 	egu.logger.Info("Extracting validators...")
+	startOperation = time.Now()
 	validators, err := egu.extractCandidates(genesis)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d validators have been extracted", len(validators)))
+	egu.logger.Info(fmt.Sprintf("%d validators have been extracted. Processing time %s", len(validators), time.Since(startOperation)))
+	startOperation = time.Now()
 	err = egu.saveCandidates(validators)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info("Validators has been uploaded")
+	egu.logger.Info(fmt.Sprintf("Validators has been saved. Processing time %s", time.Since(startOperation)))
 
 	egu.logger.Info("Extracting balances...")
+	startOperation = time.Now()
 	balances, err := egu.extractBalances(genesis)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d balances has been extracted", len(balances)))
+	egu.logger.Info(fmt.Sprintf("%d balances has been extracted. Processing time %s", len(balances), time.Since(startOperation)))
+	startOperation = time.Now()
 	err = egu.saveBalances(balances)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info("Balances has been uploaded")
+	egu.logger.Info(fmt.Sprintf("Balances has been saved. Processing time %s", time.Since(startOperation)))
 
 	egu.logger.Info("Extracting stakes...")
+	startOperation = time.Now()
 	stakes, err := egu.extractStakes(genesis)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d stakes have been extracted", len(stakes)))
+	egu.logger.Info(fmt.Sprintf("%d stakes have been extracted. Processing time %s", len(stakes), time.Since(startOperation)))
+	startOperation = time.Now()
 	err = egu.saveStakes(stakes)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info("Stakes has been uploaded")
+	egu.logger.Info(fmt.Sprintf("Stakes has been saved. Processing time %s", time.Since(startOperation)))
 
 	egu.logger.Info("Extracting unbonds...")
+	startOperation = time.Now()
 	unbonds, err := egu.extractUnbonds(genesis)
 	if err != nil {
-		panic(err)
+		//panic(err)
+		egu.logger.Error(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d unbonds have been extracted", len(unbonds)))
+	egu.logger.Info(fmt.Sprintf("%d unbonds have been extracted. Processing time %s", len(unbonds), time.Since(startOperation)))
+	startOperation = time.Now()
 	err = egu.saveUnbonds(unbonds)
 	if err != nil {
-		panic(err)
+		egu.logger.Error(fmt.Sprintf("Unbonds saving error: %s", err))
+	} else {
+		egu.logger.Info(fmt.Sprintf("Unbonds has been saved. Processing time %s", time.Since(startOperation)))
 	}
-	egu.logger.Info("Unbonds has been uploaded")
 
 	egu.logger.Info("Extracting liquidity pools...")
+	startOperation = time.Now()
 	lpList, err := egu.extractLiquidityPool(genesis)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info(fmt.Sprintf("%d liquidity pools have been extracted", len(lpList)))
+	egu.logger.Info(fmt.Sprintf("%d liquidity pools have been extracted. Processing time %s", len(lpList), time.Since(startOperation)))
+	startOperation = time.Now()
 	err = egu.saveLiquidityPool(lpList)
 	if err != nil {
 		panic(err)
 	}
-	egu.logger.Info("Liquidity pools has been uploaded")
+	egu.logger.Info(fmt.Sprintf("Liquidity pools has been saved. Processing time %s", time.Since(startOperation)))
+
+	egu.logger.Info("Extracting orders...")
+	startOperation = time.Now()
+	orderList, err := egu.extractOrders(genesis)
+	if err != nil {
+		panic(err)
+	}
+	egu.logger.Info(fmt.Sprintf("%d orders has been extracted. Processing time %s", len(orderList), time.Since(startOperation)))
+	startOperation = time.Now()
+	err = egu.saveOrders(orderList)
+	if err != nil {
+		panic(err)
+	}
+	egu.logger.Info(fmt.Sprintf("Orders has been saved. Processing time %s", time.Since(startOperation)))
 
 	egu.logger.Info("Upload complete")
 	elapsed := time.Since(start)
@@ -186,9 +247,10 @@ func (egu *ExplorerGenesisUploader) Do() error {
 	return err
 }
 
-func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResponse) ([]string, error) {
+func (egu *ExplorerGenesisUploader) extractAddresses(genesis *domain.Genesis) ([]string, error) {
 	addressesMap := make(map[string]struct{})
 	addressesMap["0000000000000000000000000000000000000000"] = struct{}{}
+
 	for _, candidate := range genesis.AppState.Candidates {
 		addressesMap[helpers.RemovePrefix(candidate.RewardAddress)] = struct{}{}
 		addressesMap[helpers.RemovePrefix(candidate.OwnerAddress)] = struct{}{}
@@ -200,8 +262,8 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResp
 		addressesMap[helpers.RemovePrefix(account.Address)] = struct{}{}
 	}
 	for _, coin := range genesis.AppState.Coins {
-		if coin.OwnerAddress != nil {
-			addressesMap[helpers.RemovePrefix(coin.OwnerAddress.Value)] = struct{}{}
+		if coin.OwnerAddress != nil && *coin.OwnerAddress != "" {
+			addressesMap[helpers.RemovePrefix(*coin.OwnerAddress)] = struct{}{}
 		}
 	}
 	for _, data := range genesis.AppState.FrozenFunds {
@@ -217,7 +279,7 @@ func (egu *ExplorerGenesisUploader) extractAddresses(genesis *api_pb.GenesisResp
 	return addresses, nil
 }
 
-func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse) ([]*domain.Coin, error) {
+func (egu *ExplorerGenesisUploader) extractCoins(genesis *domain.Genesis) ([]*domain.Coin, error) {
 	var coins = make([]*domain.Coin, len(genesis.AppState.Coins)+1)
 	i := 1
 
@@ -234,12 +296,12 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse
 	}
 
 	for _, c := range genesis.AppState.Coins {
-		if c.Id == 0 {
+		if c.ID == 0 {
 			continue
 		}
 
 		coins[i] = &domain.Coin{
-			ID:        uint(c.Id),
+			ID:        uint(c.ID),
 			Type:      domain.CoinTypeBase,
 			Name:      c.Name,
 			Symbol:    c.Symbol,
@@ -249,8 +311,8 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse
 			MaxSupply: c.MaxSupply,
 			Version:   uint(c.Version),
 		}
-		if c.OwnerAddress != nil {
-			addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(c.OwnerAddress.Value))
+		if c.OwnerAddress != nil && *c.OwnerAddress != "" {
+			addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(*c.OwnerAddress))
 			if err != nil {
 				egu.logger.Error(err)
 			} else {
@@ -262,7 +324,7 @@ func (egu *ExplorerGenesisUploader) extractCoins(genesis *api_pb.GenesisResponse
 	return coins, nil
 }
 
-func (egu ExplorerGenesisUploader) extractCandidates(genesis *api_pb.GenesisResponse) ([]*domain.Validator, error) {
+func (egu ExplorerGenesisUploader) extractCandidates(genesis *domain.Genesis) ([]*domain.Validator, error) {
 	var validators []*domain.Validator
 	for _, candidate := range genesis.AppState.Candidates {
 		ownerAddress, err := egu.addressRepository.FindId(helpers.RemovePrefix(candidate.OwnerAddress))
@@ -279,7 +341,7 @@ func (egu ExplorerGenesisUploader) extractCandidates(genesis *api_pb.GenesisResp
 		stake := candidate.TotalBipStake
 
 		validator := &domain.Validator{
-			ID:              uint(candidate.Id),
+			ID:              uint(candidate.ID),
 			PublicKey:       helpers.RemovePrefix(candidate.PublicKey),
 			OwnerAddressID:  &ownerAddress,
 			RewardAddressID: &rewardAddress,
@@ -316,7 +378,6 @@ func (egu *ExplorerGenesisUploader) saveAddresses(addresses []string) {
 		}
 		wgAddresses.Wait()
 	}
-	egu.logger.Info("Addresses has been uploaded")
 }
 
 func (egu *ExplorerGenesisUploader) saveCoins(coins []*domain.Coin) {
@@ -341,7 +402,6 @@ func (egu *ExplorerGenesisUploader) saveCoins(coins []*domain.Coin) {
 		}()
 	}
 	wgCoins.Wait()
-	egu.logger.Info("Coins has been uploaded")
 }
 
 func (egu *ExplorerGenesisUploader) saveCandidates(validators []*domain.Validator) error {
@@ -370,7 +430,7 @@ func (egu *ExplorerGenesisUploader) saveCandidates(validators []*domain.Validato
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractBalances(genesis *api_pb.GenesisResponse) ([]*domain.Balance, error) {
+func (egu *ExplorerGenesisUploader) extractBalances(genesis *domain.Genesis) ([]*domain.Balance, error) {
 	chunkSize := 1000
 	var results []*domain.Balance
 	ch := make(chan []*domain.Balance)
@@ -445,7 +505,7 @@ func (egu *ExplorerGenesisUploader) saveBalances(balances []*domain.Balance) err
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractStakes(genesis *api_pb.GenesisResponse) ([]*domain.Stake, error) {
+func (egu *ExplorerGenesisUploader) extractStakes(genesis *domain.Genesis) ([]*domain.Stake, error) {
 	var stakes []*domain.Stake
 	for _, candidate := range genesis.AppState.Candidates {
 		for _, stake := range candidate.Stakes {
@@ -510,7 +570,7 @@ func (egu *ExplorerGenesisUploader) isEmptyDB() bool {
 	return addressesCount == 0 && balancesCount == 0 && validatorCount == 0
 }
 
-func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *api_pb.GenesisResponse) ([]*domain.Unbond, error) {
+func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *domain.Genesis) ([]*domain.Unbond, error) {
 	var unbonds []*domain.Unbond
 	for _, data := range genesis.AppState.FrozenFunds {
 		addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(data.Address))
@@ -518,12 +578,12 @@ func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *api_pb.GenesisRespon
 			egu.logger.WithField("address", data.Address).Error(err)
 			continue
 		}
-		if data.CandidateKey.GetValue() == "" {
+		if data.CandidateKey == nil {
 			continue
 		}
 		unbonds = append(unbonds, &domain.Unbond{
 			AddressId:   uint(addressId),
-			ValidatorId: uint(data.CandidateId),
+			ValidatorId: uint(data.CandidateID),
 			BlockId:     uint(data.Height),
 			CoinId:      uint(data.Coin),
 			Value:       data.Value,
@@ -535,25 +595,26 @@ func (egu *ExplorerGenesisUploader) extractUnbonds(genesis *api_pb.GenesisRespon
 func (egu *ExplorerGenesisUploader) saveUnbonds(unbonds []*domain.Unbond) error {
 	egu.logger.Info("Saving unbonds to DB...")
 
+	var list []*domain.Unbond
 	for _, u := range unbonds {
 		_, err := egu.validatorRepository.GetById(u.ValidatorId)
-		if err != nil {
-			panic(err)
+		if err == nil {
+			list = append(list, u)
 		}
 	}
 
-	if len(unbonds) > 0 {
+	if len(list) > 0 {
 		wgStakes := new(sync.WaitGroup)
-		chunksCount := int(math.Ceil(float64(len(unbonds)) / float64(egu.env.StakeChunkSize)))
+		chunksCount := int(math.Ceil(float64(len(list)) / float64(egu.env.StakeChunkSize)))
 		for i := 0; i < chunksCount; i++ {
 			start := int(egu.env.StakeChunkSize) * i
 			end := start + int(egu.env.StakeChunkSize)
-			if end > len(unbonds) {
-				end = len(unbonds)
+			if end > len(list) {
+				end = len(list)
 			}
 			wgStakes.Add(1)
 			go func() {
-				err := egu.validatorRepository.SaveAllUnbonds(unbonds[start:end])
+				err := egu.validatorRepository.SaveAllUnbonds(list[start:end])
 				if err != nil {
 					egu.logger.Error(err)
 				}
@@ -562,27 +623,35 @@ func (egu *ExplorerGenesisUploader) saveUnbonds(unbonds []*domain.Unbond) error 
 			wgStakes.Wait()
 		}
 	}
+
+	if len(unbonds) == len(list) {
+		return errors.New("unbonds has not been saved")
+	} else if len(unbonds)-len(list) > 0 {
+		egu.logger.Warning(fmt.Sprintf("%d unbonds has been skiped", len(unbonds)-len(list)))
+	}
+
 	return nil
 }
 
-func (egu *ExplorerGenesisUploader) extractLiquidityPool(genesis *api_pb.GenesisResponse) ([]*domain.LiquidityPool, error) {
+func (egu *ExplorerGenesisUploader) extractLiquidityPool(genesis *domain.Genesis) ([]*domain.LiquidityPool, error) {
 	var list []*domain.LiquidityPool
 	for _, data := range genesis.AppState.Pools {
 
-		token, err := egu.coinRepository.FindBySymbol(fmt.Sprintf("LP-%d", data.Id))
+		token, err := egu.coinRepository.FindBySymbol(fmt.Sprintf("LP-%d", data.ID))
 		if err != nil {
-			egu.logger.WithField("pool_id", data.Id).Error(err)
+			egu.logger.WithField("pool_id", data.ID).Error(err)
 			continue
 		}
 
 		list = append(list, &domain.LiquidityPool{
-			Id:               data.Id,
+			Id:               data.ID,
 			TokenId:          uint64(token.ID),
 			FirstCoinId:      data.Coin0,
 			SecondCoinId:     data.Coin1,
 			FirstCoinVolume:  data.Reserve0,
 			SecondCoinVolume: data.Reserve1,
 			Liquidity:        token.Volume,
+			UpdatedAtBlockId: genesis.InitialHeight,
 		})
 	}
 	return list, nil
@@ -594,6 +663,97 @@ func (egu *ExplorerGenesisUploader) saveLiquidityPool(pools []*domain.LiquidityP
 		err := egu.liquidityPoolRepository.SaveAll(pools)
 		if err != nil {
 			egu.logger.Error(err)
+		}
+	}
+	return nil
+}
+
+func (egu *ExplorerGenesisUploader) extractOrders(genesis *domain.Genesis) ([]domain.Order, error) {
+	var list []domain.Order
+	var orderMap sync.Map
+	var wg sync.WaitGroup
+
+	for _, pool := range genesis.AppState.Pools {
+		wg.Add(len(pool.Orders))
+		for _, o := range pool.Orders {
+			go func(ord domain.GenesisOrder) {
+				defer wg.Done()
+
+				addressId, err := egu.addressRepository.FindId(helpers.RemovePrefix(ord.Owner))
+				if err != nil {
+					egu.logger.Error(err)
+					return
+				}
+
+				order := domain.Order{
+					Id:              ord.Id,
+					AddressId:       addressId,
+					CreatedAtBlock:  ord.Height,
+					LiquidityPoolId: pool.ID,
+					Status:          1,
+				}
+
+				if ord.IsSale {
+					order.CoinSellId = pool.Coin0
+					order.CoinSellVolume = ord.Volume0
+
+					order.CoinBuyId = pool.Coin1
+					order.CoinBuyVolume = ord.Volume1
+				} else {
+					order.CoinSellId = pool.Coin1
+					order.CoinSellVolume = ord.Volume1
+
+					order.CoinBuyId = pool.Coin0
+					order.CoinBuyVolume = ord.Volume0
+				}
+
+				sell, ok := big.NewFloat(0).SetString(order.CoinSellVolume)
+				if !ok {
+					egu.logger.Error("can't convert to big.int")
+					return
+				}
+				buy, ok := big.NewFloat(0).SetString(order.CoinBuyVolume)
+				if !ok {
+					egu.logger.Error("can't convert to big.int")
+					return
+				}
+				price := sell.Quo(sell, buy)
+				order.Price = price.Text('f', 18)
+				orderMap.Store(ord.Id, order)
+			}(o)
+		}
+	}
+	wg.Wait()
+	orderMap.Range(func(k, v interface{}) bool {
+		list = append(list, v.(domain.Order))
+		return true
+	})
+
+	return list, nil
+}
+
+func (egu *ExplorerGenesisUploader) saveOrders(orders []domain.Order) error {
+	chunkSize := 1000
+	egu.logger.Info("Saving orders to DB...")
+
+	if len(orders) > 0 {
+		wgStakes := new(sync.WaitGroup)
+		chunksCount := int(math.Ceil(float64(len(orders)) / float64(chunkSize)))
+		for i := 0; i < chunksCount; i++ {
+			start := chunkSize * i
+			end := start + chunkSize
+			if end > len(orders) {
+				end = len(orders)
+			}
+			wgStakes.Add(1)
+			go func() {
+				err := egu.liquidityPoolRepository.SaveAllOrders(orders[start:end])
+				if err != nil {
+					egu.logger.Error(err)
+				}
+				wgStakes.Done()
+			}()
+			wgStakes.Wait()
 		}
 	}
 	return nil
