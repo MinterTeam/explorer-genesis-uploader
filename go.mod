@@ -30,7 +30,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
 	golang.org/x/net v0.0.0-20210825183410-e898025ed96a // indirect
-	golang.org/x/sys v0.0.0-20210923061019-b8560ed6a9b7 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/genproto v0.0.0-20210903162649-d08c68adba83 // indirect
 	google.golang.org/grpc v1.40.0 // indirect
